@@ -1,0 +1,94 @@
+version: '3'
+services:
+
+  nginx:
+    image: nginx:1.19.8
+    restart: always
+    ports:
+      - '80:80'
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+      - wordpress:/var/www/html
+    networks:
+      front_net:
+
+  wordpress:
+    image: wordpress:5.7.0-php7.4-fpm
+    ports:
+      - '9000:9000'
+    volumes:
+      - wordpress:/var/www/html
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wp_user
+      WORDPRESS_DB_PASSWORD: wp_password
+      WORDPRESS_DB_NAME: wp_db
+    networks:
+      front_net:
+      back_net:
+
+  db:
+    image: mysql:5.7
+    restart: always
+    environment:
+      MYSQL_DATABASE: wp_db
+      MYSQL_USER: wp_user
+      MYSQL_PASSWORD: wp_password
+      MYSQL_RANDOM_ROOT_PASSWORD: '1'
+    volumes:
+      - db:/var/lib/mysql
+    networks:
+      back_net:
+
+  prometheus:
+    image: prom/prometheus:v2.25.2
+    ports:
+      - '9090:9090'
+    volumes:
+      - prometheus_data:/prometheus
+      - ./prometheus:/prometheus/conf
+    command:
+      - '--config.file=/prometheus/conf/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention=1d'
+    networks:
+      - back_net
+
+  node-exporter:
+    image: prom/node-exporter:v1.1.2
+    user: root
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points="^/(sys|proc|dev|host|etc)($$|/)"'
+    networks:
+      - back_net
+
+  grafana:
+    image: grafana/grafana:7.4.5
+    volumes:
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards/
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources/
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=password
+    depends_on:
+      - prometheus
+    ports:
+      - 3000:3000
+    networks:
+      - back_net
+
+networks:
+  front_net:
+  back_net:
+
+volumes:
+  db:
+  wordpress:
+  prometheus_data:
